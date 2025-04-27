@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Voice-to-Voice Agent</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Poppins', sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #74ebd5 0%, #ACB6E5 100%);
+      color: #333;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+    }
+
+    .mic-button {
+      background-color: #ff4b5c;
+      border: none;
+      border-radius: 50%;
+      width: 80px;
+      height: 80px;
+      cursor: pointer;
+      outline: none;
+      position: relative;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      transition: background-color 0.3s ease;
+    }
+
+    .mic-button.active {
+      background-color: #4caf50;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+      70% { box-shadow: 0 0 0 20px rgba(76, 175, 80, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+    }
+
+    #response {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>🎤 Your Voice Agent</h1>
+
+  <button id="mic" class="mic-button" onclick="toggleMic()"></button>
+
+  <audio id="response" controls style="display:none;"></audio>
+
+  <script>
+    let socket = new WebSocket('ws://localhost:5003/ws');
+    let mediaRecorder;
+    let isRecording = false;
+    let audioChunks = [];
+
+    const micButton = document.getElementById('mic');
+    const audioPlayer = document.getElementById('response');
+
+    async function toggleMic() {
+      if (!isRecording) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+        mediaRecorder.start();
+
+        mediaRecorder.ondataavailable = e => {
+        audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+        const fullBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const arrayBuffer = await fullBlob.arrayBuffer();
+        socket.send(arrayBuffer);
+        audioChunks = [];
+        };
+
+        isRecording = true;
+        micButton.classList.add('active');
+    } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        micButton.classList.remove('active');
+    }
+    }
+
+    socket.onopen = () => {
+      console.log('✅ WebSocket connected');
+    };
+
+    socket.onerror = (error) => {
+      console.error('❌ WebSocket error', error);
+    };
+
+    socket.onclose = () => {
+      console.warn('⚠️ WebSocket closed');
+    };
+
+    socket.onmessage = async (event) => {
+      const blob = new Blob([event.data], { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
+      audioPlayer.src = url;
+      audioPlayer.style.display = 'block';
+      audioPlayer.play();
+    };
+  </script>
+
+</body>
+</html>
